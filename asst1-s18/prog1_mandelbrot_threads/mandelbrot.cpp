@@ -127,8 +127,16 @@ void *workerThreadStart(void *threadArgs)
 
     int piece = args->height / args->numThreads; 
     int startRow = args->threadId * piece ;
+    int endRow;
 
-    int endRow = startRow + piece;
+    if(args->threadId == args->numThreads-1){
+        endRow = args->height;
+    }
+    else{
+        endRow = startRow + piece;
+    }
+
+    // printf("%d %d\n",startRow,endRow);
 
     for (int j = startRow; j < endRow; j++)
     {
