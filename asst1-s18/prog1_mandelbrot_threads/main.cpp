@@ -126,6 +126,7 @@ int main(int argc, char** argv) {
     // end parsing of commandline options
 
 
+
     int* output_serial = new int[width*height];
     int* output_thread = new int[width*height];
 
