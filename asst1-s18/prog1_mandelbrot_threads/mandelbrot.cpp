@@ -119,20 +119,24 @@ typedef struct
 // Thread entrypoint.
 void *workerThreadStart(void *threadArgs)
 {
+    double startTime = CycleTimer::currentSeconds();
+
     WorkerArgs *args = static_cast<WorkerArgs *>(threadArgs);
 
     // TODO: Implement worker thread here.
     float dx = (args->x1 - args->x0) / args->width;
     float dy = (args->y1 - args->y0) / args->height;
 
-    int piece = args->height / args->numThreads; 
-    int startRow = args->threadId * piece ;
+    int piece = args->height / args->numThreads;
+    int startRow = args->threadId * piece;
     int endRow;
 
-    if(args->threadId == args->numThreads-1){
+    if (args->threadId == args->numThreads - 1)
+    {
         endRow = args->height;
     }
-    else{
+    else
+    {
         endRow = startRow + piece;
     }
 
@@ -150,7 +154,9 @@ void *workerThreadStart(void *threadArgs)
         }
     }
 
-    printf("Hello world from thread %d\n", args->threadId);
+    double endTime = CycleTimer::currentSeconds();
+
+    printf("thread %d cost %lf ms\n", args->threadId, (endTime - startTime) * 1000);
 
     return NULL;
 }
