@@ -106,8 +106,6 @@ typedef struct
     float y0, y1;
     unsigned int width;
     unsigned int height;
-    unsigned int startRow;
-    unsigned int endRow;
     int maxIterations;
     int *output;
     int threadId;
@@ -128,8 +126,22 @@ void *workerThreadStart(void *threadArgs)
     float dx = (args->x1 - args->x0) / args->width;
     float dy = (args->y1 - args->y0) / args->height;
 
-    int startRow = args->startRow;
-    int endRow = args->endRow;
+    int startRow;
+    int endRow;
+
+    int piece = args->height / args->numThreads;
+    int remainder = args->height % args->numThreads;
+
+    if (args->threadId < remainder)
+    {
+        startRow = args->threadId * (piece + 1);
+        endRow = startRow + (piece + 1);
+    }
+    else
+    {
+        startRow = remainder * (piece + 1) + (args->threadId - remainder) * piece;
+        endRow = startRow + piece;
+    }
 
     // printf("%d %d\n",startRow,endRow);
 
@@ -174,10 +186,6 @@ void mandelbrotThread(
     pthread_t workers[MAX_THREADS];
     WorkerArgs args[MAX_THREADS];
 
-    int piece = height / numThreads;
-    int remainder = height % numThreads;
-    int currentStart = 0;
-
     for (int i = 0; i < numThreads; i++)
     {
         // TODO: Set thread arguments here.
@@ -191,19 +199,6 @@ void mandelbrotThread(
         args[i].output = output;
         args[i].width = width;
         args[i].height = height;
-
-
-        args[i].startRow = currentStart;
-        if (remainder > 0)
-        {
-            args[i].endRow = currentStart + piece + 1;
-        }
-        else
-        {
-            args[i].endRow = currentStart + piece;
-        }
-        remainder--;
-        currentStart = args[i].endRow;
     }
 
     // Fire up the worker threads.  Note that numThreads-1 pthreads
