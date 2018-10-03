@@ -51,7 +51,6 @@ static inline int mandel(float c_re, float c_im, int count)
     int i;
     for (i = 0; i < count; ++i)
     {
-
         if (z_re * z_re + z_im * z_im > 4.f)
             break;
 
@@ -107,6 +106,8 @@ typedef struct
     float y0, y1;
     unsigned int width;
     unsigned int height;
+    unsigned int startRow;
+    unsigned int endRow;
     int maxIterations;
     int *output;
     int threadId;
@@ -127,18 +128,8 @@ void *workerThreadStart(void *threadArgs)
     float dx = (args->x1 - args->x0) / args->width;
     float dy = (args->y1 - args->y0) / args->height;
 
-    int piece = args->height / args->numThreads;
-    int startRow = args->threadId * piece;
-    int endRow;
-
-    if (args->threadId == args->numThreads - 1)
-    {
-        endRow = args->height;
-    }
-    else
-    {
-        endRow = startRow + piece;
-    }
+    int startRow = args->startRow;
+    int endRow = args->endRow;
 
     // printf("%d %d\n",startRow,endRow);
 
@@ -183,6 +174,10 @@ void mandelbrotThread(
     pthread_t workers[MAX_THREADS];
     WorkerArgs args[MAX_THREADS];
 
+    int piece = height / numThreads;
+    int remainder = height % numThreads;
+    int currentStart = 0;
+
     for (int i = 0; i < numThreads; i++)
     {
         // TODO: Set thread arguments here.
@@ -192,10 +187,23 @@ void mandelbrotThread(
         args[i].y0 = y0;
         args[i].x1 = x1;
         args[i].y1 = y1;
-        args[i].width = width;
-        args[i].height = height;
         args[i].maxIterations = maxIterations;
         args[i].output = output;
+        args[i].width = width;
+        args[i].height = height;
+
+
+        args[i].startRow = currentStart;
+        if (remainder > 0)
+        {
+            args[i].endRow = currentStart + piece + 1;
+        }
+        else
+        {
+            args[i].endRow = currentStart + piece;
+        }
+        remainder--;
+        currentStart = args[i].endRow;
     }
 
     // Fire up the worker threads.  Note that numThreads-1 pthreads
