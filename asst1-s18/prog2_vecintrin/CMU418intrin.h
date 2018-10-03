@@ -15,18 +15,21 @@
 extern Logger CMU418Logger;
 
 template <typename T>
-struct __cmu418_vec {
+struct __cmu418_vec
+{
   T value[VECTOR_WIDTH];
 };
 
 // Declare a mask with __cmu418_mask
-struct __cmu418_mask : __cmu418_vec<bool> {};
+struct __cmu418_mask : __cmu418_vec<bool>
+{
+};
 
 // Declare a floating point vector register with __cmu418_vec_float
 #define __cmu418_vec_float __cmu418_vec<float>
 
 // Declare an integer vector register with __cmu418_vec_int
-#define __cmu418_vec_int   __cmu418_vec<int>
+#define __cmu418_vec_int __cmu418_vec<int>
 
 //***********************
 //* Function Definition *
@@ -62,13 +65,13 @@ void _cmu418_vmove_int(__cmu418_vec_int &dest, __cmu418_vec_int &src, __cmu418_m
 
 // Load values from array src to vector register dest if vector lane active
 //  otherwise keep the old value
-void _cmu418_vload_float(__cmu418_vec_float &dest, float* src, __cmu418_mask &mask);
-void _cmu418_vload_int(__cmu418_vec_int &dest, int* src, __cmu418_mask &mask);
+void _cmu418_vload_float(__cmu418_vec_float &dest, float *src, __cmu418_mask &mask);
+void _cmu418_vload_int(__cmu418_vec_int &dest, int *src, __cmu418_mask &mask);
 
 // Store values from vector register src to array dest if vector lane active
 //  otherwise keep the old value
-void _cmu418_vstore_float(float* dest, __cmu418_vec_float &src, __cmu418_mask &mask);
-void _cmu418_vstore_int(int* dest, __cmu418_vec_int &src, __cmu418_mask &mask);
+void _cmu418_vstore_float(float *dest, __cmu418_vec_float &src, __cmu418_mask &mask);
+void _cmu418_vstore_int(int *dest, __cmu418_vec_int &src, __cmu418_mask &mask);
 
 // Return calculation of (veca + vecb) if vector lane active
 //  otherwise keep the old value
@@ -128,6 +131,6 @@ void _cmu418_hadd_float(__cmu418_vec_float &vecResult, __cmu418_vec_float &vec);
 void _cmu418_interleave_float(__cmu418_vec_float &vecResult, __cmu418_vec_float &vec);
 
 // Add a customized log to help debugging
-void addUserLog(const char * logStr);
+void addUserLog(const char *logStr);
 
 #endif
