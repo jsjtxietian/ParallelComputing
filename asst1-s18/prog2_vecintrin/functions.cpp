@@ -91,8 +91,26 @@ void clampedExpSerial(float *values, int *exponents, float *output, int N)
 
 void clampedExpVector(float *values, int *exponents, float *output, int N)
 {
+	__cmu418_vec_float x;
+	__cmu418_vec_int e;
+	__cmu418_vec_float result;
+
+
 	// Implement your vectorized version of clampedExpSerial here
-	//  ...
+	for (int i = 0; i < N; i += VECTOR_WIDTH)
+	{
+		// All ones
+		maskAll = _cmu418_init_ones();
+
+		// Load vector of values from contiguous memory addresses
+		_cmu418_vload_float(x, values + i, maskAll); 
+		_cmu418_vload_float(e, exponents + i , maskAll); 
+
+		
+
+		// Write results back to memory
+		_cmu418_vstore_float(output + i, result, maskAll);
+	}
 }
 
 float arraySumSerial(float *values, int N)
