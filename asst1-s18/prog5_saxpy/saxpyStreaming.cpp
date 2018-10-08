@@ -4,11 +4,10 @@
 #include <stdint.h>
 
 extern void saxpySerial(int N,
-			float scale,
-			float X[],
-			float Y[],
-			float result[]);
-
+                        float scale,
+                        float X[],
+                        float Y[],
+                        float result[]);
 
 void saxpyStreaming(int N,
                     float scale,
@@ -19,4 +18,3 @@ void saxpyStreaming(int N,
     // Replace this code with ones that make use of the streaming instructions
     saxpySerial(N, scale, X, Y, result);
 }
-
