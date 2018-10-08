@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-
 void sqrtSerial(int N,
                 float initialGuess,
                 float values[],
@@ -11,14 +10,16 @@ void sqrtSerial(int N,
 
     static const float kThreshold = 0.00001f;
 
-    for (int i=0; i<N; i++) {
+    for (int i = 0; i < N; i++)
+    {
 
         float x = values[i];
         float guess = initialGuess;
 
         float error = fabs(guess * guess * x - 1.f);
 
-        while (error > kThreshold) {
+        while (error > kThreshold)
+        {
             guess = (3.f * guess - x * guess * guess * guess) * 0.5f;
             error = fabs(guess * guess * x - 1.f);
         }
@@ -26,4 +27,3 @@ void sqrtSerial(int N,
         output[i] = x * guess;
     }
 }
-
