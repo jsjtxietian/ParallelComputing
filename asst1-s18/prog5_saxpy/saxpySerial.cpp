@@ -1,4 +1,3 @@
-
 void saxpySerial(int N,
                  float scale,
                  float X[],
