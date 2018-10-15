@@ -3,6 +3,7 @@
 #include <math.h>
 #include "CMU418intrin.h"
 #include "logger.h"
+#include <iostream>
 using namespace std;
 
 void absSerial(float *values, float *output, int N)
@@ -76,6 +77,7 @@ void clampedExpSerial(float *values, int *exponents, float *output, int N)
 		float xpower = x;
 		while (y > 0)
 		{
+
 			if (y & 0x1)
 				result *= xpower;
 			xpower = xpower * xpower;
@@ -91,22 +93,46 @@ void clampedExpSerial(float *values, int *exponents, float *output, int N)
 
 void clampedExpVector(float *values, int *exponents, float *output, int N)
 {
-	__cmu418_vec_float x;
+	__cmu418_vec_float v;
 	__cmu418_vec_int e;
 	__cmu418_vec_float result;
+	__cmu418_vec_float xpowder;
+	__cmu418_vec_float upBound = _cmu418_vset_float(4.18f);
 
+	__cmu418_vec_int zeros = _cmu418_vset_int(0);
+	__cmu418_vec_int ones = _cmu418_vset_int(1);
+	__cmu418_mask maskAll = _cmu418_init_ones();
+	__cmu418_mask needMult, needContinue , needClip;
 
 	// Implement your vectorized version of clampedExpSerial here
 	for (int i = 0; i < N; i += VECTOR_WIDTH)
 	{
-		// All ones
-		maskAll = _cmu418_init_ones();
+		result = _cmu418_vset_float(1.f);
 
 		// Load vector of values from contiguous memory addresses
-		_cmu418_vload_float(x, values + i, maskAll); 
-		_cmu418_vload_float(e, exponents + i , maskAll); 
+		_cmu418_vload_float(v, values + i, maskAll);
+		_cmu418_vload_int(e, exponents + i, maskAll);
+		_cmu418_vmove_float(xpowder,v,maskAll);
 
-		
+		_cmu418_vgt_int(needContinue, e, zeros, maskAll); // y > 0 ?
+
+		while (_cmu418_cntbits(needContinue) != 0)  // while (y > 0)
+		{
+			__cmu418_vec_int needMult;
+			__cmu418_mask needMultMask;
+
+			_cmu418_vbitand_int(needMult,e,ones,needContinue); // y & 01
+			_cmu418_vgt_int(needMultMask, needMult, zeros, needContinue);
+
+			_cmu418_vmult_float(result,result,xpowder,needMultMask);
+			_cmu418_vmult_float(xpowder,xpowder,xpowder,needContinue);
+
+			_cmu418_vshiftright_int(e,e,ones,needContinue); // y >> 1
+			_cmu418_vgt_int(needContinue, e, zeros, needContinue);
+		}
+
+		_cmu418_vgt_float(needClip,result,upBound,maskAll);
+		_cmu418_vmove_float(result,upBound,needClip);
 
 		// Write results back to memory
 		_cmu418_vstore_float(output + i, result, maskAll);

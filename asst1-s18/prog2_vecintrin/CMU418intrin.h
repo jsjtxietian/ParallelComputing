@@ -6,6 +6,7 @@
 
 #include <cstdlib>
 #include <cmath>
+#include <iostream>
 #include "logger.h"
 
 //*******************
@@ -17,8 +18,29 @@ extern Logger CMU418Logger;
 template <typename T>
 struct __cmu418_vec
 {
-  T value[VECTOR_WIDTH];
+    T value[VECTOR_WIDTH];
+
+    void operator<<(ostream &output)
+    {
+        for (int i = 0; i < VECTOR_WIDTH; i++)
+        {
+            output << value[i] << ' ';
+        }
+        output << endl;
+    }
 };
+
+template <typename T>
+ostream &operator<<(ostream &output, __cmu418_vec<T> &vec)
+{
+    for (int i = 0; i < VECTOR_WIDTH; i++)
+    {
+        output << vec.value[i] << ' ';
+    }
+    output << endl;
+
+    return output;
+}
 
 // Declare a mask with __cmu418_mask
 struct __cmu418_mask : __cmu418_vec<bool>
