@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <getopt.h>
 #include <math.h>
+#include <time.h>
+#include <stdlib.h>
 #include "CMU418intrin.h"
 #include "logger.h"
 using namespace std;
@@ -132,7 +134,7 @@ void usage(const char *progname)
 
 void initValue(float *values, int *exponents, float *output, float *gold, unsigned int N)
 {
-
+	srand(time(NULL));
 	for (unsigned int i = 0; i < N + VECTOR_WIDTH; i++)
 	{
 		// random input values

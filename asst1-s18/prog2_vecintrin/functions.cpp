@@ -102,40 +102,54 @@ void clampedExpVector(float *values, int *exponents, float *output, int N)
 	__cmu418_vec_int zeros = _cmu418_vset_int(0);
 	__cmu418_vec_int ones = _cmu418_vset_int(1);
 	__cmu418_mask maskAll = _cmu418_init_ones();
-	__cmu418_mask needMult, needContinue , needClip;
+	__cmu418_mask needMult, needContinue, needClip, needCalc, writeBackMask;
 
 	// Implement your vectorized version of clampedExpSerial here
+
 	for (int i = 0; i < N; i += VECTOR_WIDTH)
 	{
+		if (i + VECTOR_WIDTH <= N)
+		{
+			writeBackMask = maskAll;
+		}
+		else
+		{
+			int actualLength = N - i;
+			writeBackMask = _cmu418_init_ones(actualLength);
+		}
+
 		result = _cmu418_vset_float(1.f);
+		needContinue = _cmu418_init_ones(0);
 
 		// Load vector of values from contiguous memory addresses
-		_cmu418_vload_float(v, values + i, maskAll);
-		_cmu418_vload_int(e, exponents + i, maskAll);
-		_cmu418_vmove_float(xpowder,v,maskAll);
+		_cmu418_vload_float(v, values + i, writeBackMask);
+		_cmu418_vload_int(e, exponents + i, writeBackMask);
+		_cmu418_vmove_float(xpowder, v, writeBackMask);
 
-		_cmu418_vgt_int(needContinue, e, zeros, maskAll); // y > 0 ?
+		_cmu418_vgt_int(needContinue, e, zeros, writeBackMask); // y > 0 ?
 
-		while (_cmu418_cntbits(needContinue) != 0)  // while (y > 0)
+		while (_cmu418_cntbits(needContinue) != 0) // while (y > 0)
 		{
 			__cmu418_vec_int needMult;
 			__cmu418_mask needMultMask;
 
-			_cmu418_vbitand_int(needMult,e,ones,needContinue); // y & 01
+			_cmu418_vbitand_int(needMult, e, ones, needContinue); // y & 01
 			_cmu418_vgt_int(needMultMask, needMult, zeros, needContinue);
 
-			_cmu418_vmult_float(result,result,xpowder,needMultMask);
-			_cmu418_vmult_float(xpowder,xpowder,xpowder,needContinue);
+			needCalc = _cmu418_mask_and(needMultMask, needContinue);
 
-			_cmu418_vshiftright_int(e,e,ones,needContinue); // y >> 1
+			_cmu418_vmult_float(result, result, xpowder, needCalc);
+			_cmu418_vmult_float(xpowder, xpowder, xpowder, needContinue);
+
+			_cmu418_vshiftright_int(e, e, ones, needContinue); // y >> 1
 			_cmu418_vgt_int(needContinue, e, zeros, needContinue);
 		}
 
-		_cmu418_vgt_float(needClip,result,upBound,maskAll);
-		_cmu418_vmove_float(result,upBound,needClip);
+		_cmu418_vgt_float(needClip, result, upBound, writeBackMask);
+		_cmu418_vmove_float(result, upBound, needClip);
 
 		// Write results back to memory
-		_cmu418_vstore_float(output + i, result, maskAll);
+		_cmu418_vstore_float(output + i, result, writeBackMask);
 	}
 }
 
@@ -146,7 +160,6 @@ float arraySumSerial(float *values, int N)
 	{
 		sum += values[i];
 	}
-
 	return sum;
 }
 
@@ -154,6 +167,27 @@ float arraySumSerial(float *values, int N)
 // Assume VECTOR_WIDTH is a power of 2
 float arraySumVector(float *values, int N)
 {
-	// Implement your vectorized version here
-	//  ...
+	__cmu418_vec_float resultVector = _cmu418_vset_float(0);
+	__cmu418_vec_float inputVector;
+	__cmu418_mask maskAll = _cmu418_init_ones();
+	__cmu418_mask maskOne = _cmu418_init_ones(1);
+
+	for (int i = 0; i < N; i += VECTOR_WIDTH)
+	{
+		_cmu418_vload_float(inputVector, values + i, maskAll);
+		_cmu418_vadd_float(resultVector, resultVector, inputVector, maskAll);
+	}
+
+	int width = VECTOR_WIDTH;
+
+	while (width != 1)
+	{
+		width /= 2;
+		_cmu418_hadd_float(resultVector, resultVector);
+		_cmu418_interleave_float(resultVector, resultVector);
+	}
+
+	float result[1];
+	_cmu418_vstore_float(result,resultVector,maskOne);
+	return result[0];
 }

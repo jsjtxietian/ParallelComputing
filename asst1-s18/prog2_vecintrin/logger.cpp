@@ -31,23 +31,23 @@ void Logger::printStats()
 
 void Logger::printLog()
 {
-	printf("***************** Printing Vector Unit Execution Log *****************\n");
-	printf(" Instruction | Vector Lane Occupancy ('*' for active, '_' for inactive)\n");
-	printf("------------- --------------------------------------------------------\n");
-	for (int i = 0; i < log.size(); i++)
-	{
-		printf("%12s | ", log[i].instruction);
-		for (int j = 0; j < VECTOR_WIDTH; j++)
-		{
-			if (log[i].mask & (((unsigned long long)1) << j))
-			{
-				printf("*");
-			}
-			else
-			{
-				printf("_");
-			}
-		}
-		printf("\n");
-	}
+// 	printf("***************** Printing Vector Unit Execution Log *****************\n");
+// 	printf(" Instruction | Vector Lane Occupancy ('*' for active, '_' for inactive)\n");
+// 	printf("------------- --------------------------------------------------------\n");
+// 	for (int i = 0; i < log.size(); i++)
+// 	{
+// 		printf("%12s | ", log[i].instruction);
+// 		for (int j = 0; j < VECTOR_WIDTH; j++)
+// 		{
+// 			if (log[i].mask & (((unsigned long long)1) << j))
+// 			{
+// 				printf("*");
+// 			}
+// 			else
+// 			{
+// 				printf("_");
+// 			}
+// 		}
+// 		printf("\n");
+// 	}
 }
