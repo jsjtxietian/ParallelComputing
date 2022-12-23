@@ -1,4 +1,10 @@
-# ReadMe
+# README
+
+Essentials Of Parallel Computing
+
+
+
+# OLD
 
 Homework from CMU 15-418/15-618 http://www.cs.cmu.edu/afs/cs/academic/class/15418-s18/www/schedule.html
 

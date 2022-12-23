@@ -1,0 +1,35 @@
+# This docker build sets up the following software
+#    GCC, G++, GFortran 10.0 compilers
+#    Valgrind
+#    OpenMPI and MPICH
+#    ndiff
+
+# To run the example in docker, do the following
+
+# Download the docker install file for your system
+
+# some scripts are provided 
+
+
+# runs the docker run command. If there is no local image, downloads the version from dockerhub
+   ./docker_run.sh
+# cleans up all the docker images and downloads
+   ./docker_cleanup.sh
+
+# For the pre-built docker image, run
+
+   docker run -it --entrypoint /bin/bash essentialsofparallelcomputing/chapter2
+
+# Alternatively, build an image locally and run it 
+
+   docker build -t chapter2 .
+
+# and Docker arguments can be used to set your preferred language and timezone
+
+   docker build --build-arg DOCKER_LANG=en_US --build-arg \
+      DOCKER_TIMEZONE=America/Denver --build-arg DOCKER_USER=$USER -t chapter2 .
+
+   docker run -it --entrypoint /bin/bash chapter2
+
+   docker build -t essentialsofparallelcomputing/chapter2 .
+   ./docker_run.sh
