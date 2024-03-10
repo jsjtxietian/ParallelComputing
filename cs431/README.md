@@ -1,3 +1,5 @@
+cargo run --features=build-bin
+
 # Tips
 
 - Read the paper and the skeleton code carefully.  I'll ask questions about those in the exams.

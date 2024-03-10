@@ -3,19 +3,18 @@
 use std::collections::hash_map::{Entry, HashMap};
 use std::hash::Hash;
 use std::sync::{Arc, Mutex, RwLock};
+use std::thread;
 
 /// Cache that remembers the result for each key.
 #[derive(Debug)]
 pub struct Cache<K, V> {
-    // todo! This is an example cache type. Build your own cache type that satisfies the
-    // specification for `get_or_insert_with`.
-    inner: Mutex<HashMap<K, V>>,
+    inner: RwLock<HashMap<K, Arc<Mutex<Option<V>>>>>,
 }
 
 impl<K, V> Default for Cache<K, V> {
     fn default() -> Self {
         Self {
-            inner: Mutex::new(HashMap::new()),
+            inner: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -36,6 +35,42 @@ impl<K: Eq + Hash + Clone, V: Clone> Cache<K, V> {
     ///
     /// [`Entry`]: https://doc.rust-lang.org/stable/std/collections/hash_map/struct.HashMap.html#method.entry
     pub fn get_or_insert_with<F: FnOnce(K) -> V>(&self, key: K, f: F) -> V {
-        todo!()
+        loop {
+            let value_arc_option = {
+                let read_map = self.inner.read().unwrap();
+                read_map.get(&key).cloned()
+            };
+
+            if let Some(value_arc) = value_arc_option {
+                match value_arc.try_lock() {
+                    Ok(mut value_guard) => {
+                        if let Some(ref v) = *value_guard {
+                            return v.clone();
+                        }
+                        break;
+                    }
+                    Err(_) => {
+                        thread::yield_now();
+                        continue;
+                    }
+                };
+            } else {
+                break;
+            }
+        }
+
+        let mut write_map = self.inner.write().unwrap();
+        let value = write_map
+            .entry(key.clone())
+            .or_insert_with(|| Arc::new(Mutex::new(None)))
+            .clone();
+        let mut value_guard = value.lock().unwrap();
+        drop(write_map);
+
+        if value_guard.is_none() {
+            *value_guard = Some(f(key));
+        }
+
+        value_guard.clone().unwrap()
     }
 }
