@@ -220,7 +220,7 @@ impl<T> Arc<T> {
     // underlying data.
     #[inline]
     fn is_unique(&mut self) -> bool {
-        Arc::<T>::count(&self) == 1
+        Arc::<T>::count(self) == 1
     }
 
     /// Returns a mutable reference into the given `Arc` without any check.
@@ -365,7 +365,7 @@ impl<T: Clone> Arc<T> {
     #[inline]
     pub fn make_mut(this: &mut Self) -> &mut T {
         if !this.is_unique() {
-            let data = unsafe { &(*this.ptr.as_ptr()).data};
+            let data = unsafe { &(*this.ptr.as_ptr()).data };
             *this = Arc::new(data.clone());
         }
         unsafe { &mut (*this.ptr.as_ptr()).data }
