@@ -57,10 +57,9 @@ impl<T: Ord> Cursor<'_, T> {
 
             let current_node = unsafe { &*current_ptr };
 
-            match current_node.data.cmp(key) {
-                Ordering::Greater => return false,
-                Ordering::Less => self.0 = current_node.next.lock().unwrap(),
-
+            match key.cmp(&current_node.data) {
+                Ordering::Less => return false,
+                Ordering::Greater => self.0 = current_node.next.lock().unwrap(),
                 Ordering::Equal => return true,
             }
         }
@@ -133,6 +132,7 @@ impl<T: Ord + Display> ConcurrentSet<T> for FineGrainedListSet<T> {
                     let mut next_guard = current_node.next.lock().unwrap();
                     let new_next_node = *next_guard;
                     *prev_guard = new_next_node;
+                    drop(next_guard);
                     unsafe {
                         let _ = Box::from_raw(current_ptr);
                     }
