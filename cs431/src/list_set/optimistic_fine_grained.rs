@@ -43,7 +43,22 @@ impl<'g, T: Ord> Cursor<'g, T> {
     ///
     /// Return `Err(())` if the cursor cannot move.
     fn find(&mut self, key: &T, guard: &'g Guard) -> Result<bool, ()> {
-        todo!()
+        loop {
+            if self.curr.is_null() {
+                return Ok(false);
+            }
+
+            let curr_node = unsafe { self.curr.deref() };
+            match key.cmp(&curr_node.data) {
+                Less => return Ok(false),
+                Equal => return Ok(true),
+                Greater => {
+                    let old_prev = std::mem::replace(&mut self.prev,unsafe { curr_node.next.read_lock() });
+                    old_prev.finish();
+                    self.curr = self.prev.load(Ordering::SeqCst, guard);
+                }
+            }
+        }
     }
 }
 
@@ -64,21 +79,74 @@ impl<T> OptimisticFineGrainedListSet<T> {
 
 impl<T: Ord> OptimisticFineGrainedListSet<T> {
     fn find<'g>(&'g self, key: &T, guard: &'g Guard) -> Result<(bool, Cursor<'g, T>), ()> {
-        todo!()
+        let mut cursor = self.head(guard);
+        let found = cursor.find(key, guard).map_err(|_| false).unwrap_or(false);
+        Ok((found, cursor))
     }
 }
 
 impl<T: Ord> ConcurrentSet<T> for OptimisticFineGrainedListSet<T> {
     fn contains(&self, key: &T) -> bool {
-        todo!()
+        let guard = &pin();
+        let result = self.find(key, guard).map_err(|_| false);
+        if result.is_ok() {
+            result.unwrap().0
+        } else {
+            false
+        }
     }
 
     fn insert(&self, key: T) -> bool {
-        todo!()
+        let guard = &pin();
+        let mut cursor = self.head(guard);
+        if let Ok(found) = cursor.find(&key, guard) {
+            if found {
+                return false;
+            }
+        }
+        let mut new_node = Node::new(key, cursor.curr);
+        loop {
+            match cursor.prev.compare_exchange(
+                cursor.curr,
+                new_node,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+                guard,
+            ) {
+                Ok(node) => {
+                    cursor.prev.finish();
+                    return true;
+                }
+                Err(e) => {
+                    new_node = e.new;
+                }
+            }
+        }
     }
 
     fn remove(&self, key: &T) -> bool {
-        todo!()
+        let guard = &pin();
+        let mut cursor = self.head(guard);
+        if let Ok(found) = cursor.find(key, guard) {
+            if found {
+                let succ = unsafe { cursor.curr.deref() }
+                    .next
+                    .write_lock()
+                    .load(Ordering::SeqCst, guard);
+                if cursor
+                    .prev
+                    .compare_exchange(cursor.curr, succ, Ordering::SeqCst, Ordering::SeqCst, guard)
+                    .is_ok()
+                {
+                    unsafe {
+                        guard.defer_destroy(cursor.curr);
+                    }
+                    cursor.prev.finish();
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 
@@ -104,13 +172,39 @@ impl<'g, T> Iterator for Iter<'g, T> {
     type Item = Result<&'g T, ()>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        let curr_node_ref = unsafe {self.cursor.curr.as_ref()}?;
+        
+        let result = unsafe {
+            curr_node_ref.next.read(|next_atomic| {
+                let next = next_atomic.load(Ordering::SeqCst, self.guard);
+                self.cursor.curr = next;
+            })
+        };
+
+        match result {
+            Some(_) => {
+                Some(Ok(&curr_node_ref.data))
+            },
+            None => {
+                Some(Err(()))
+            }
+        }
     }
 }
 
 impl<T> Drop for OptimisticFineGrainedListSet<T> {
     fn drop(&mut self) {
-        todo!()
+        let guard = &pin();
+        let mut curr = self.head.write_lock().load(Ordering::SeqCst, guard);
+        while !curr.is_null() {
+            unsafe {
+                guard.defer_destroy(curr);
+            }
+            curr = unsafe { curr.deref() }
+                .next
+                .write_lock()
+                .load(Ordering::SeqCst, guard);
+        }
     }
 }
 
