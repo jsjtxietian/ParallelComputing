@@ -50,15 +50,24 @@ impl<'g, T: Ord> Cursor<'g, T> {
                 return Ok(false);
             }
 
-            let curr_node = unsafe { self.curr.deref() };
-            match key.cmp(&curr_node.data) {
-                Less => return Ok(false),
-                Equal => return Ok(true),
-                Greater => {
-                    let old_prev =
-                        std::mem::replace(&mut self.prev, unsafe { curr_node.next.read_lock() });
-                    old_prev.finish();
-                    self.curr = self.prev.load(Ordering::SeqCst, guard);
+            let curr_node = unsafe { self.curr.as_ref() };
+            match curr_node {
+                Some(node) => match key.cmp(&node.data) {
+                    Less => return Ok(false),
+                    Equal => return Ok(true),
+                    Greater => {
+                        let prev_read_guard = unsafe { node.next.read_lock() };
+                        if !prev_read_guard.validate() {
+                            prev_read_guard.finish();
+                            return Err(());
+                        }
+                        let old_prev = std::mem::replace(&mut self.prev, prev_read_guard);
+                        old_prev.finish();
+                        self.curr = self.prev.load(Ordering::SeqCst, guard);
+                    }
+                },
+                None => {
+                    return Err(());
                 }
             }
         }
@@ -111,21 +120,20 @@ impl<T: Ord> ConcurrentSet<T> for OptimisticFineGrainedListSet<T> {
             }
         }
         let mut new_node = Node::new(key, cursor.curr);
-        loop {
-            match cursor.prev.compare_exchange(
-                cursor.curr,
-                new_node,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-                guard,
-            ) {
-                Ok(node) => {
-                    cursor.prev.finish();
-                    return true;
-                }
-                Err(e) => {
-                    new_node = e.new;
-                }
+        match cursor.prev.compare_exchange(
+            cursor.curr,
+            new_node,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+            guard,
+        ) {
+            Ok(node) => {
+                cursor.prev.finish();
+                return true;
+            }
+            Err(e) => {
+                cursor.prev.finish();
+                return false;
             }
         }
     }
@@ -135,20 +143,38 @@ impl<T: Ord> ConcurrentSet<T> for OptimisticFineGrainedListSet<T> {
         let mut cursor = self.head(guard);
         if let Ok(found) = cursor.find(key, guard) {
             if found {
-                let succ = unsafe { cursor.curr.deref() }
+                let succ = unsafe { cursor.curr.as_ref() };
+                if succ.is_none() {
+                    return false;
+                }
+                let succ = succ
+                    .unwrap()
                     .next
                     .write_lock()
                     .load(Ordering::SeqCst, guard);
-                if cursor
-                    .prev
-                    .compare_exchange(cursor.curr, succ, Ordering::SeqCst, Ordering::SeqCst, guard)
-                    .is_ok()
-                {
-                    unsafe {
-                        guard.defer_destroy(cursor.curr);
+                let prev = cursor.prev.upgrade();
+                match prev {
+                    Ok(p) => {
+                        if p.compare_exchange(
+                            cursor.curr,
+                            succ,
+                            Ordering::SeqCst,
+                            Ordering::SeqCst,
+                            guard,
+                        )
+                        .is_ok()
+                        {
+                            unsafe {
+                                guard.defer_destroy(cursor.curr);
+                            }
+                            return true;
+                        } else {
+                            return false;
+                        }
                     }
-                    cursor.prev.finish();
-                    return true;
+                    Err(_) => {
+                        return false;
+                    }
                 }
             }
         }
@@ -199,12 +225,16 @@ where
         }
 
         let value = unsafe {
-            curr_node.deref().next.read(|next_atomic| {
-                let old_prev =
-                    std::mem::replace(&mut self.cursor.prev, curr_node.deref().next.read_lock());
+            let curr_node = curr_node.as_ref();
+            if curr_node.is_none() {
+                return None;
+            }
+            let curr_node = curr_node.unwrap();
+            curr_node.next.read(|next_atomic| {
+                let old_prev = std::mem::replace(&mut self.cursor.prev, curr_node.next.read_lock());
                 old_prev.finish();
 
-                let data = &self.cursor.curr.deref().data;
+                let data = &curr_node.data;
 
                 let value = next_atomic.load(Ordering::SeqCst, self.guard);
                 self.cursor.curr = value;
