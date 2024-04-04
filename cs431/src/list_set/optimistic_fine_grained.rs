@@ -1,4 +1,6 @@
 use std::cmp::Ordering::*;
+use std::f32::consts::E;
+use std::fmt::Debug;
 use std::mem::{self, ManuallyDrop};
 use std::sync::atomic::Ordering;
 
@@ -53,7 +55,8 @@ impl<'g, T: Ord> Cursor<'g, T> {
                 Less => return Ok(false),
                 Equal => return Ok(true),
                 Greater => {
-                    let old_prev = std::mem::replace(&mut self.prev,unsafe { curr_node.next.read_lock() });
+                    let old_prev =
+                        std::mem::replace(&mut self.prev, unsafe { curr_node.next.read_lock() });
                     old_prev.finish();
                     self.curr = self.prev.load(Ordering::SeqCst, guard);
                 }
@@ -90,7 +93,9 @@ impl<T: Ord> ConcurrentSet<T> for OptimisticFineGrainedListSet<T> {
         let guard = &pin();
         let result = self.find(key, guard).map_err(|_| false);
         if result.is_ok() {
-            result.unwrap().0
+            let result = result.unwrap();
+            result.1.prev.finish();
+            result.0
         } else {
             false
         }
@@ -101,6 +106,7 @@ impl<T: Ord> ConcurrentSet<T> for OptimisticFineGrainedListSet<T> {
         let mut cursor = self.head(guard);
         if let Ok(found) = cursor.find(&key, guard) {
             if found {
+                cursor.prev.finish();
                 return false;
             }
         }
@@ -146,6 +152,7 @@ impl<T: Ord> ConcurrentSet<T> for OptimisticFineGrainedListSet<T> {
                 }
             }
         }
+        cursor.prev.finish();
         false
     }
 }
@@ -168,26 +175,47 @@ impl<T> OptimisticFineGrainedListSet<T> {
     }
 }
 
-impl<'g, T> Iterator for Iter<'g, T> {
+impl<'g, T> Iterator for Iter<'g, T>
+where
+    T: Debug,
+{
     type Item = Result<&'g T, ()>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let curr_node_ref = unsafe {self.cursor.curr.as_ref()}?;
-        
-        let result = unsafe {
-            curr_node_ref.next.read(|next_atomic| {
-                let next = next_atomic.load(Ordering::SeqCst, self.guard);
-                self.cursor.curr = next;
+        let curr_node = self.cursor.curr;
+        let prev_node = &self.cursor.prev;
+
+        if !prev_node.validate() {
+            return Some(Err(()));
+        }
+
+        if curr_node.is_null() {
+            let real_node = prev_node.load(Ordering::SeqCst, self.guard);
+            if real_node.is_null() {
+                return None;
+            } else {
+                return Some(Err(()));
+            }
+        }
+
+        let value = unsafe {
+            curr_node.deref().next.read(|next_atomic| {
+                let old_prev =
+                    std::mem::replace(&mut self.cursor.prev, curr_node.deref().next.read_lock());
+                old_prev.finish();
+
+                let data = &self.cursor.curr.deref().data;
+
+                let value = next_atomic.load(Ordering::SeqCst, self.guard);
+                self.cursor.curr = value;
+
+                data
             })
         };
 
-        match result {
-            Some(_) => {
-                Some(Ok(&curr_node_ref.data))
-            },
-            None => {
-                Some(Err(()))
-            }
+        match value {
+            Some(data) => Some(Ok(data)),
+            None => Some(Err(())),
         }
     }
 }
