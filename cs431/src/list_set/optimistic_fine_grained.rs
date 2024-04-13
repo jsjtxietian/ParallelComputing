@@ -5,7 +5,7 @@ use std::mem::{self, ManuallyDrop};
 use std::sync::atomic::Ordering;
 
 use crate::ConcurrentSet;
-use crossbeam_epoch::{pin, Atomic, Guard, Owned, Shared};
+use crossbeam_epoch::{pin, unprotected, Atomic, Guard, Owned, Shared};
 use cs431::lock::seqlock::{ReadGuard, SeqLock};
 
 #[derive(Debug)]
@@ -252,7 +252,7 @@ where
 
 impl<T> Drop for OptimisticFineGrainedListSet<T> {
     fn drop(&mut self) {
-        let guard = &pin();
+        let guard = unsafe {unprotected() };
         let mut curr = self.head.write_lock().load(Ordering::SeqCst, guard);
         while !curr.is_null() {
             unsafe {

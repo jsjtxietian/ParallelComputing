@@ -21,6 +21,8 @@ RUNNERS=(
     "cargo --release"
     "cargo_asan"
     "cargo_asan --release"
+    "cargo_tsan"
+    "cargo_tsan --release"
 )
 TIMEOUT=180s
 SCORE=0
@@ -29,11 +31,7 @@ echo "1. Basic tests"
 
 TESTS=(
     "--doc boc"
-    "--test boc -- --exact basic_test::message_passing_test"
-    "--test boc -- --exact basic_test::message_passing_determines_order"
-    "--test boc -- --exact basic_test::merge_sort_basic_test"
-    "--test boc -- --exact basic_test::fibonacci_basic_test"
-    "--test boc -- --exact basic_test::banking_basic_test"
+    "--test boc basic_test"
 )
 
 basic_test_failed=false
@@ -53,9 +51,7 @@ fi
 echo "2. Stress tests"
 
 TESTS=(
-    "--test boc -- --exact stress_test::merge_sort_stress_test"
-    "--test boc -- --exact stress_test::fibonacci_stress_test"
-    "--test boc -- --exact stress_test::banking_stress_test"
+    "--test boc stress_test"
 )
 
 stress_test_failed=false
