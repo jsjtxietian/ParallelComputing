@@ -129,11 +129,11 @@ impl<T: Ord> ConcurrentSet<T> for OptimisticFineGrainedListSet<T> {
         ) {
             Ok(node) => {
                 cursor.prev.finish();
-                return true;
+                true
             }
             Err(e) => {
                 cursor.prev.finish();
-                return false;
+                false
             }
         }
     }
@@ -225,11 +225,7 @@ where
         }
 
         let value = unsafe {
-            let curr_node = curr_node.as_ref();
-            if curr_node.is_none() {
-                return None;
-            }
-            let curr_node = curr_node.unwrap();
+            let curr_node = curr_node.as_ref()?;
             curr_node.next.read(|next_atomic| {
                 let old_prev = std::mem::replace(&mut self.cursor.prev, curr_node.next.read_lock());
                 old_prev.finish();
@@ -252,7 +248,7 @@ where
 
 impl<T> Drop for OptimisticFineGrainedListSet<T> {
     fn drop(&mut self) {
-        let guard = unsafe {unprotected() };
+        let guard = unsafe { unprotected() };
         let mut curr = self.head.write_lock().load(Ordering::SeqCst, guard);
         while !curr.is_null() {
             unsafe {

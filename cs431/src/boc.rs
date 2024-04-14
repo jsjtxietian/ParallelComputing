@@ -58,10 +58,11 @@ impl Request {
     /// `behavior` must be a valid raw pointer to the behavior for `self`, and this should be the
     /// only enqueueing of this request and behavior.
     unsafe fn start_enqueue(&self, behavior: *const Behavior) {
+        let this_request = self as *const _;
         let prev = self
             .target
             .last()
-            .fetch_update(SeqCst, SeqCst, |prev| Some(behavior as *mut _))
+            .fetch_update(SeqCst, SeqCst, |prev| Some(this_request as *mut _))
             .expect("fetch_update failed");
 
         if prev.is_null() {
@@ -72,7 +73,9 @@ impl Request {
         }
 
         unsafe {
-            while (*prev).scheduled.load(SeqCst) == false {}
+            while !(*prev).scheduled.load(SeqCst) {
+                println!("start_enqueue wait");
+            }
             (*prev).next.store(behavior as *mut _, SeqCst);
         }
     }
@@ -100,10 +103,12 @@ impl Request {
         let next = self.next.load(SeqCst);
         if next.is_null() {
             let expected = self as *const _ as *mut _;
-            if let Ok(_) = self
+
+            if self
                 .target
                 .last()
                 .compare_exchange(expected, null_mut(), SeqCst, SeqCst)
+                .is_ok()
             {
                 return;
             }
@@ -113,6 +118,7 @@ impl Request {
                 if !next.is_null() {
                     break;
                 }
+                println!("release wait");
             }
         }
         unsafe {
@@ -220,7 +226,7 @@ impl Behavior {
             for request in &(*behavior_ptr).requests {
                 request.start_enqueue(behavior_ptr);
             }
-            for request in &(*behavior_ptr).requests{
+            for request in &(*behavior_ptr).requests {
                 request.finish_enqueue();
             }
         }
