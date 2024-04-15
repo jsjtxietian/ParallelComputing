@@ -74,7 +74,8 @@ impl Request {
 
         unsafe {
             while !(*prev).scheduled.load(SeqCst) {
-                println!("start_enqueue wait");
+                std::hint::spin_loop()
+                // println!("start_enqueue wait");
             }
             (*prev).next.store(behavior as *mut _, SeqCst);
         }
@@ -100,7 +101,7 @@ impl Request {
     ///
     /// `self` must have been actually completed.
     unsafe fn release(&self) {
-        let next = self.next.load(SeqCst);
+        let mut next = self.next.load(SeqCst);
         if next.is_null() {
             let expected = self as *const _ as *mut _;
 
@@ -114,11 +115,11 @@ impl Request {
             }
 
             loop {
-                let next = self.next.load(SeqCst);
+                next = self.next.load(SeqCst);
                 if !next.is_null() {
                     break;
                 }
-                println!("release wait");
+                // println!("release wait");
             }
         }
         unsafe {
@@ -129,7 +130,10 @@ impl Request {
 
 impl Ord for Request {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        Arc::as_ptr(&self.target).cmp(&Arc::as_ptr(&other.target))
+        // Arc::as_ptr(&self.target).cmp(&Arc::as_ptr(&other.target))
+        Arc::as_ptr(&self.target)
+            .cast::<()>()
+            .cmp(&Arc::as_ptr(&other.target).cast::<()>())
     }
 }
 impl PartialOrd for Request {
@@ -244,6 +248,9 @@ impl Behavior {
     ///
     /// `this` must be a valid behavior.
     unsafe fn resolve_one(this: *const Self) {
+        // if this.is_null() {
+        //     println!("Die");
+        // }
         unsafe {
             if (*this).count.fetch_sub(1, SeqCst) != 1 {
                 return;
