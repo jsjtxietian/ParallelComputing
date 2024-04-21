@@ -4,6 +4,8 @@ use core::fmt::Debug;
 use core::mem::{self, ManuallyDrop};
 use core::sync::atomic::Ordering::*;
 use crossbeam_epoch::{Atomic, Guard, Owned, Shared};
+use std::sync::atomic::Ordering;
+use std::usize;
 
 /// Growable array of `Atomic<T>`.
 ///
@@ -156,6 +158,27 @@ impl<T> Segment<T> {
             unsafe { mem::zeroed() },
         )
     }
+
+    // todo: change signature to somethink like `drop(self)` or `&self`
+    // take ownership from the segment, (with Atomic::{try_}into_owned or Shared::{try_}into_owned), 
+    // loop through the inner array of the segments and free the next segments if it is really a segment.
+    fn drop_segments(segment: &mut Shared<Segment<T>>, height: usize, guard: &Guard) {
+        if !segment.is_null() {
+            let seg = unsafe { segment.deref() };
+
+            if height > 1 {
+                let children = unsafe { &*seg.children };
+                for child in children.iter() {
+                    Self::drop_segments(&mut child.load(SeqCst, guard), height - 1, guard);
+                }
+            } else {
+                unsafe {
+                    // todo: defer destory?
+                    ManuallyDrop::drop(&mut (segment.deref_mut()).children);
+                }
+            }
+        }
+    }
 }
 
 impl<T> Debug for Segment<T> {
@@ -167,7 +190,10 @@ impl<T> Debug for Segment<T> {
 impl<T> Drop for GrowableArray<T> {
     /// Deallocate segments, but not the individual elements.
     fn drop(&mut self) {
-        todo!()
+        let guard = crossbeam_epoch::pin();
+        let mut root = self.root.load(SeqCst, &guard);
+        let init_height = root.tag();
+        Segment::<T>::drop_segments(&mut root, init_height, &guard);
     }
 }
 
@@ -188,6 +214,93 @@ impl<T> GrowableArray<T> {
     /// Returns the reference to the `Atomic` pointer at `index`. Allocates new segments if
     /// necessary.
     pub fn get<'g>(&self, mut index: usize, guard: &'g Guard) -> &'g Atomic<T> {
-        todo!()
+        let mut root = self.root.load(Ordering::SeqCst, guard);
+        if root.is_null() {
+            let new_root = Segment::new().with_tag(1);
+            // todo: check drop
+            let result = self
+                .root
+                .compare_exchange(
+                    Shared::null(),
+                    new_root,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                    guard,
+                )
+                .map_err(|e| drop(e.new));
+            root = self.root.load(Ordering::SeqCst, guard);
+        }
+
+        let mut required_height: usize = 1;
+        {
+            let mut max_index_at_depth = (1 << SEGMENT_LOGSIZE) - 1;
+
+            while index > max_index_at_depth {
+                required_height += 1;
+                max_index_at_depth = (1 << (SEGMENT_LOGSIZE * required_height)) - 1;
+            }
+        }
+
+        let mut current_max_height = root.tag();
+
+        // dbg!(index);
+        // dbg!(current_max_height);
+        // dbg!(required_height);
+
+        if required_height > current_max_height {
+            let new_root = Segment::new().with_tag(required_height).into_shared(&guard);
+
+            while required_height > current_max_height {
+                let new_segment = unsafe { new_root.deref() };
+                if required_height - 1 == current_max_height {
+                    unsafe {
+                        new_segment.children[0].store(root, SeqCst);
+                        // todo: handle failure
+                        let _ = self
+                            .root
+                            .compare_exchange(root, new_root, SeqCst, SeqCst, &guard);
+                    }
+                } else {
+                    unsafe { new_segment.children[0].store(Segment::new(), SeqCst) };
+                }
+                required_height = required_height - 1;
+            }
+        }
+
+        // regular search
+        root = self.root.load(SeqCst, &guard);
+        current_max_height = root.tag();
+        let mut segment = unsafe { root.deref() };
+
+        while current_max_height > 0 {
+            let segment_index = index >> (SEGMENT_LOGSIZE * (current_max_height - 1));
+            index &= (1 << (SEGMENT_LOGSIZE * (current_max_height - 1))) - 1;
+
+            // dbg!(segment_index);
+            // dbg!(index);
+
+            let next_segment =
+                unsafe { segment.children[segment_index].load(Ordering::SeqCst, guard) };
+            if next_segment.is_null() {
+                let new_segment = Segment::new();
+                unsafe {
+                    // todo: handle failure
+                    let _ = segment.children[segment_index].compare_exchange(
+                        Shared::null(),
+                        new_segment,
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
+                        &guard,
+                    );
+                    segment = segment.children[segment_index].load(SeqCst, &guard).deref();
+                }
+            } else {
+                segment = unsafe { next_segment.deref() };
+            }
+
+            current_max_height = current_max_height - 1;
+        }
+
+        unsafe { &segment.elements[index] }
     }
 }
