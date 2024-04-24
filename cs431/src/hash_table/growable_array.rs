@@ -159,24 +159,23 @@ impl<T> Segment<T> {
         )
     }
 
-    // todo: change signature to somethink like `drop(self)` or `&self`
-    // take ownership from the segment, (with Atomic::{try_}into_owned or Shared::{try_}into_owned), 
-    // loop through the inner array of the segments and free the next segments if it is really a segment.
+    // todo: change signature to somethink like `drop(self)` or `&self` ?
     fn drop_segments(segment: &mut Shared<Segment<T>>, height: usize, guard: &Guard) {
         if !segment.is_null() {
-            let seg = unsafe { segment.deref() };
+            let mut owned = unsafe { segment.into_owned() };
 
             if height > 1 {
-                let children = unsafe { &*seg.children };
+                let children = unsafe { &*owned.children };
                 for child in children.iter() {
                     Self::drop_segments(&mut child.load(SeqCst, guard), height - 1, guard);
                 }
             } else {
                 unsafe {
-                    // todo: defer destory?
-                    ManuallyDrop::drop(&mut (segment.deref_mut()).children);
+                    ManuallyDrop::drop(&mut (owned.children));
                 }
             }
+
+            drop(owned);
         }
     }
 }
@@ -249,9 +248,9 @@ impl<T> GrowableArray<T> {
 
         if required_height > current_max_height {
             let new_root = Segment::new().with_tag(required_height).into_shared(&guard);
+            let mut new_segment = unsafe { new_root.deref() };
 
             while required_height > current_max_height {
-                let new_segment = unsafe { new_root.deref() };
                 if required_height - 1 == current_max_height {
                     unsafe {
                         new_segment.children[0].store(root, SeqCst);
@@ -261,7 +260,10 @@ impl<T> GrowableArray<T> {
                             .compare_exchange(root, new_root, SeqCst, SeqCst, &guard);
                     }
                 } else {
-                    unsafe { new_segment.children[0].store(Segment::new(), SeqCst) };
+                    unsafe {
+                        new_segment.children[0].store(Segment::new(), SeqCst);
+                        new_segment = new_segment.children[0].load(SeqCst, &guard).deref();
+                    }
                 }
                 required_height = required_height - 1;
             }
@@ -272,7 +274,7 @@ impl<T> GrowableArray<T> {
         current_max_height = root.tag();
         let mut segment = unsafe { root.deref() };
 
-        while current_max_height > 0 {
+        while current_max_height > 1 {
             let segment_index = index >> (SEGMENT_LOGSIZE * (current_max_height - 1));
             index &= (1 << (SEGMENT_LOGSIZE * (current_max_height - 1))) - 1;
 
