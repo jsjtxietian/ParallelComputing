@@ -5,7 +5,6 @@ use core::mem::{self, ManuallyDrop};
 use core::sync::atomic::Ordering::*;
 use crossbeam_epoch::{Atomic, Guard, Owned, Shared};
 use std::sync::atomic::Ordering;
-use std::usize;
 
 /// Growable array of `Atomic<T>`.
 ///
@@ -216,7 +215,6 @@ impl<T> GrowableArray<T> {
         let mut root = self.root.load(Ordering::SeqCst, guard);
         if root.is_null() {
             let new_root = Segment::new().with_tag(1);
-            // todo: check drop
             let result = self
                 .root
                 .compare_exchange(
@@ -242,36 +240,44 @@ impl<T> GrowableArray<T> {
 
         let mut current_max_height = root.tag();
 
-        // dbg!(index);
-        // dbg!(current_max_height);
-        // dbg!(required_height);
+        loop {
+            if required_height > current_max_height {
+                let mut new_root = Segment::new().with_tag(required_height).into_shared(guard);
+                let mut current_segment = unsafe { new_root.deref() };
 
-        if required_height > current_max_height {
-            let new_root = Segment::new().with_tag(required_height).into_shared(&guard);
-            let mut new_segment = unsafe { new_root.deref() };
-
-            while required_height > current_max_height {
-                if required_height - 1 == current_max_height {
+                let mut new_root_height = required_height - current_max_height;
+                while required_height - 1 > current_max_height {
                     unsafe {
-                        new_segment.children[0].store(root, SeqCst);
-                        // todo: handle failure
-                        let _ = self
-                            .root
-                            .compare_exchange(root, new_root, SeqCst, SeqCst, &guard);
+                        current_segment.children[0].store(Segment::new(), SeqCst);
+                        current_segment = current_segment.children[0].load(SeqCst, guard).deref();
                     }
-                } else {
-                    unsafe {
-                        new_segment.children[0].store(Segment::new(), SeqCst);
-                        new_segment = new_segment.children[0].load(SeqCst, &guard).deref();
+                    required_height -= 1;
+                }
+
+                // required_height - 1 == current_max_height, CAS
+                unsafe {
+                    current_segment.children[0].store(root, SeqCst);
+                    if self
+                        .root
+                        .compare_exchange(root, new_root, SeqCst, SeqCst, guard)
+                        .is_ok()
+                    {
+                        break;
+                    } else {
+                        current_segment.children[0].store(Shared::null(), SeqCst);
+                        Segment::drop_segments(&mut new_root, new_root_height, guard);
+                        root = self.root.load(Ordering::SeqCst, guard);
+                        current_max_height = root.tag();
                     }
                 }
-                required_height = required_height - 1;
+            } else {
+                break;
             }
         }
 
         // regular search
-        root = self.root.load(SeqCst, &guard);
-        current_max_height = root.tag();
+        root = self.root.load(SeqCst, guard);
+        current_max_height = self.root.load(SeqCst, guard).tag();
         let mut segment = unsafe { root.deref() };
 
         while current_max_height > 1 {
@@ -286,21 +292,25 @@ impl<T> GrowableArray<T> {
             if next_segment.is_null() {
                 let new_segment = Segment::new();
                 unsafe {
-                    // todo: handle failure
-                    let _ = segment.children[segment_index].compare_exchange(
+                    match segment.children[segment_index].compare_exchange(
                         Shared::null(),
                         new_segment,
                         Ordering::SeqCst,
                         Ordering::SeqCst,
-                        &guard,
-                    );
-                    segment = segment.children[segment_index].load(SeqCst, &guard).deref();
+                        guard,
+                    ) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            Segment::drop_segments(&mut e.new.into_shared(guard), 1, guard);
+                        }
+                    }
+                    segment = segment.children[segment_index].load(SeqCst, guard).deref();
                 }
             } else {
                 segment = unsafe { next_segment.deref() };
             }
 
-            current_max_height = current_max_height - 1;
+            current_max_height -= 1;
         }
 
         unsafe { &segment.elements[index] }
