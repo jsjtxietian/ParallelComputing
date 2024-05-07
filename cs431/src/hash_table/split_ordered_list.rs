@@ -76,7 +76,7 @@ impl<V> SplitOrderedList<V> {
         let mut cursor = self.lookup_bucket(bucket_index, guard);
         let result = cursor.find_harris(&self.regular_key(*key), guard);
 
-        (bucket_size, result.unwrap(), cursor)
+        (bucket_size, result.unwrap_or(false), cursor)
     }
 
     fn regular_key(&self, key: usize) -> usize {
@@ -87,7 +87,11 @@ impl<V> SplitOrderedList<V> {
     }
 
     fn dummy_key(&self, key: usize) -> usize {
-        key.reverse_bits()
+        if key == 0 {
+            0
+        } else {
+            key.reverse_bits()
+        }
     }
 
     fn get_parent(&self, num: usize) -> usize {
@@ -103,46 +107,43 @@ impl<V> SplitOrderedList<V> {
 
         num - mask
     }
-
+    
     fn init_buckets(&self, bucket_index: usize, guard: &Guard) {
         let dummy = Owned::new(Node::new(
-            if bucket_index == 0 {
-                0
-            } else {
-                self.dummy_key(bucket_index)
-            },
+            self.dummy_key(bucket_index),
             MaybeUninit::<V>::uninit(),
         ));
 
+        let mut cursor: Cursor<usize, MaybeUninit<V>>;
         if bucket_index == 0 {
-            let bucket = self.buckets.get(bucket_index, guard);
-            let mut cursor = self.list.head(guard);
-            let insert_result = cursor.insert(dummy, guard);
-            if insert_result.is_ok() {
-                bucket.store(cursor.curr(), SeqCst);
-            } else {
-                todo!()
-            }
-            return;
+            cursor = self.list.head(guard);
+        } else {
+            let parent_index = self.get_parent(bucket_index);
+            cursor = self.lookup_bucket(parent_index, guard);
         }
 
-        let parent_index = self.get_parent(bucket_index);
-        let mut cursor = self.lookup_bucket(parent_index, guard);
-
-        // todo: find key
-        let key: usize = self.dummy_key(bucket_index);
+        let key = self.dummy_key(bucket_index);
         let find_result = cursor.find_harris(&key, guard);
-        if find_result.is_ok() {
-            let insert_result = cursor.insert(dummy, guard);
-            match self.buckets.get(bucket_index, guard).compare_exchange(
-                Shared::null(),
-                cursor.curr(),
-                SeqCst,
-                SeqCst,
-                guard,
-            ) {
-                Ok(_) => {}
-                Err(_) => {}
+
+        if let Ok(found) = find_result {
+            if !found {
+                let insert_result = cursor.insert(dummy, guard);
+                if insert_result.is_ok() {
+                    match self.buckets.get(bucket_index, guard).compare_exchange(
+                        Shared::null(),
+                        cursor.curr(),
+                        SeqCst,
+                        SeqCst,
+                        guard,
+                    ) {
+                        Ok(_) => {}
+                        Err(_) => {
+                            todo!()
+                        }
+                    }
+                } else {
+                    drop(insert_result.unwrap_err());
+                }
             }
         }
     }
@@ -155,7 +156,6 @@ impl<V> SplitOrderedList<V> {
 impl<V> ConcurrentMap<usize, V> for SplitOrderedList<V> {
     fn lookup<'a>(&'a self, key: &usize, guard: &'a Guard) -> Option<&'a V> {
         Self::assert_valid_key(*key);
-        // Cursor::lookup
         let (bucket_size, found, mut cursor) = self.find(&key, guard);
         if !found {
             return None;
@@ -176,11 +176,10 @@ impl<V> ConcurrentMap<usize, V> for SplitOrderedList<V> {
 
         let new_node = Owned::new(Node::new(self.regular_key(key), MaybeUninit::new(value)));
         let result = cursor.insert(new_node, guard);
-        if result.is_err() {
-            // unsafe {
-            // return Err(result.unwrap_err().into_value().assume_init());
-            // }
-            todo!()
+        if let Err(owned_node) = result {
+            unsafe {
+                return Err(owned_node.into_box().into_value().assume_init());
+            }
         }
 
         let count = self.count.fetch_add(1, SeqCst) + 1;
@@ -199,8 +198,11 @@ impl<V> ConcurrentMap<usize, V> for SplitOrderedList<V> {
         if !found {
             return Err(());
         } else {
-            unsafe {
-                return Ok(cursor.delete(&guard).unwrap().assume_init_ref());
+            let result = cursor.delete(&guard);
+            if result.is_ok() {
+                return Ok(unsafe { result.unwrap().assume_init_ref() });
+            } else {
+                return Err(());
             }
         }
     }
