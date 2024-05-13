@@ -45,6 +45,7 @@ impl<V> SplitOrderedList<V> {
         }
     }
 
+    // todo, check the book
     /// Creates a cursor and moves it to the bucket for the given index.  If the bucket doesn't
     /// exist, recursively initializes the buckets.
     fn lookup_bucket<'s>(
@@ -57,6 +58,7 @@ impl<V> SplitOrderedList<V> {
             self.init_buckets(index, guard);
         }
         // Cursor::from_raw and Shared::as_raw ?
+        // make sure prev does not outrun curr ?
         Cursor::new(
             self.buckets.get(index, guard),
             self.buckets.get(index, guard).load(SeqCst, &guard),
@@ -73,10 +75,15 @@ impl<V> SplitOrderedList<V> {
         let bucket_size = self.size.load(SeqCst);
         let bucket_index = key % bucket_size;
 
+        // loop {
         let mut cursor = self.lookup_bucket(bucket_index, guard);
         let result = cursor.find_harris(&self.regular_key(*key), guard);
-
-        (bucket_size, result.unwrap_or(false), cursor)
+        if result.is_ok() {
+            return (bucket_size, result.unwrap(), cursor);
+        } else {
+            todo!();
+        }
+        // }
     }
 
     fn regular_key(&self, key: usize) -> usize {
@@ -107,7 +114,7 @@ impl<V> SplitOrderedList<V> {
 
         num - mask
     }
-    
+
     fn init_buckets(&self, bucket_index: usize, guard: &Guard) {
         let dummy = Owned::new(Node::new(
             self.dummy_key(bucket_index),
