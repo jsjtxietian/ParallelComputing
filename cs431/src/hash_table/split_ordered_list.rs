@@ -53,7 +53,7 @@ impl<V> SplitOrderedList<V> {
         index: usize,
         guard: &'s Guard,
     ) -> Cursor<'s, usize, MaybeUninit<V>> {
-        let bucket = self.buckets.get(index, guard).load(SeqCst, &guard);
+        let bucket = self.buckets.get(index, guard).load(SeqCst, guard);
         if bucket.is_null() {
             self.init_buckets(index, guard);
         }
@@ -61,7 +61,7 @@ impl<V> SplitOrderedList<V> {
         // make sure prev does not outrun curr ?
         Cursor::new(
             self.buckets.get(index, guard),
-            self.buckets.get(index, guard).load(SeqCst, &guard),
+            self.buckets.get(index, guard).load(SeqCst, guard),
         )
     }
 
@@ -78,8 +78,8 @@ impl<V> SplitOrderedList<V> {
         // loop {
         let mut cursor = self.lookup_bucket(bucket_index, guard);
         let result = cursor.find_harris(&self.regular_key(*key), guard);
-        if result.is_ok() {
-            return (bucket_size, result.unwrap(), cursor);
+        if let Ok(r) = result {
+            (bucket_size, r, cursor)
         } else {
             todo!();
         }
@@ -135,7 +135,9 @@ impl<V> SplitOrderedList<V> {
         if let Ok(found) = find_result {
             if !found {
                 let insert_result = cursor.insert(dummy, guard);
-                if insert_result.is_ok() {
+                if let Err(r) = insert_result {
+                    drop(r);
+                } else {
                     match self.buckets.get(bucket_index, guard).compare_exchange(
                         Shared::null(),
                         cursor.curr(),
@@ -148,8 +150,6 @@ impl<V> SplitOrderedList<V> {
                             todo!()
                         }
                     }
-                } else {
-                    drop(insert_result.unwrap_err());
                 }
             }
         }
@@ -163,9 +163,9 @@ impl<V> SplitOrderedList<V> {
 impl<V> ConcurrentMap<usize, V> for SplitOrderedList<V> {
     fn lookup<'a>(&'a self, key: &usize, guard: &'a Guard) -> Option<&'a V> {
         Self::assert_valid_key(*key);
-        let (bucket_size, found, mut cursor) = self.find(&key, guard);
+        let (bucket_size, found, mut cursor) = self.find(key, guard);
         if !found {
-            return None;
+            None
         } else {
             unsafe {
                 return Some(cursor.lookup().assume_init_ref());
@@ -201,15 +201,15 @@ impl<V> ConcurrentMap<usize, V> for SplitOrderedList<V> {
 
     fn delete<'a>(&'a self, key: &usize, guard: &'a Guard) -> Result<&'a V, ()> {
         Self::assert_valid_key(*key);
-        let (bucket_size, found, mut cursor) = self.find(&key, guard);
+        let (bucket_size, found, mut cursor) = self.find(key, guard);
         if !found {
-            return Err(());
+            Err(())
         } else {
-            let result = cursor.delete(&guard);
-            if result.is_ok() {
-                return Ok(unsafe { result.unwrap().assume_init_ref() });
+            let result = cursor.delete(guard);
+            if let Ok(r) = result {
+                Ok(unsafe { r.assume_init_ref() })
             } else {
-                return Err(());
+                Err(())
             }
         }
     }

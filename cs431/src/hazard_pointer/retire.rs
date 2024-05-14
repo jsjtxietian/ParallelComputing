@@ -55,13 +55,24 @@ impl<'s> RetiredSet<'s> {
             drop(unsafe { Box::from_raw(data as *mut T) })
         }
 
-        todo!()
+        self.inner.push((pointer as usize, free::<T>));
+        if self.inner.len() >= Self::THRESHOLD {
+            self.collect();
+        }
     }
 
     /// Free the pointers that are `retire`d by the current thread and not `protect`ed by any other
     /// threads.
     pub fn collect(&mut self) {
-        todo!()
+        let hazards = self.hazards.all_hazards();
+        self.inner.retain(|&(data, free_fn)| {
+            if hazards.contains(&data) {
+                true
+            } else {
+                unsafe { free_fn(data) };
+                false
+            }
+        });
     }
 }
 
