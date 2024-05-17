@@ -1,11 +1,9 @@
 use std::cmp::Ordering::*;
-use std::f32::consts::E;
-use std::fmt::Debug;
 use std::mem::{self, ManuallyDrop};
 use std::sync::atomic::Ordering;
 
 use crate::ConcurrentSet;
-use crossbeam_epoch::{pin, unprotected, Atomic, Guard, Owned, Shared};
+use crossbeam_epoch::{pin, Atomic, Guard, Owned, Shared};
 use cs431::lock::seqlock::{ReadGuard, SeqLock};
 
 #[derive(Debug)]
@@ -50,24 +48,19 @@ impl<'g, T: Ord> Cursor<'g, T> {
                 return Ok(false);
             }
 
-            let curr_node = unsafe { self.curr.as_ref() };
-            match curr_node {
-                Some(node) => match key.cmp(&node.data) {
-                    Less => return Ok(false),
-                    Equal => return Ok(true),
-                    Greater => {
-                        let prev_read_guard = unsafe { node.next.read_lock() };
-                        if !prev_read_guard.validate() {
-                            prev_read_guard.finish();
-                            return Err(());
-                        }
-                        let old_prev = std::mem::replace(&mut self.prev, prev_read_guard);
-                        old_prev.finish();
-                        self.curr = self.prev.load(Ordering::SeqCst, guard);
+            let curr_node = unsafe { self.curr.as_ref().unwrap() };
+            match key.cmp(&curr_node.data) {
+                Less => return Ok(false),
+                Equal => return Ok(true),
+                Greater => {
+                    let prev_read_guard = unsafe { curr_node.next.read_lock() };
+                    if !prev_read_guard.validate() {
+                        prev_read_guard.finish();
+                        return Err(());
                     }
-                },
-                None => {
-                    return Err(());
+                    let old_prev = std::mem::replace(&mut self.prev, prev_read_guard);
+                    old_prev.finish();
+                    self.curr = self.prev.load(Ordering::SeqCst, guard);
                 }
             }
         }
@@ -92,94 +85,104 @@ impl<T> OptimisticFineGrainedListSet<T> {
 impl<T: Ord> OptimisticFineGrainedListSet<T> {
     fn find<'g>(&'g self, key: &T, guard: &'g Guard) -> Result<(bool, Cursor<'g, T>), ()> {
         let mut cursor = self.head(guard);
-        let found = cursor.find(key, guard).map_err(|_| false).unwrap_or(false);
-        Ok((found, cursor))
+        let found = cursor.find(key, guard);
+        if let Ok(found) = found {
+            Ok((found, cursor))
+        } else {
+            cursor.prev.finish();
+            Err(())
+        }
     }
 }
 
 impl<T: Ord> ConcurrentSet<T> for OptimisticFineGrainedListSet<T> {
     fn contains(&self, key: &T) -> bool {
         let guard = &pin();
-        let result = self.find(key, guard).map_err(|_| false);
-        if result.is_ok() {
-            let result = result.unwrap();
-            result.1.prev.finish();
-            result.0
-        } else {
-            false
+        let result = self.find(key, guard);
+        match result {
+            Ok(r) => {
+                r.1.prev.finish();
+                return r.0;
+            }
+            Err(_) => return false,
         }
     }
 
     fn insert(&self, key: T) -> bool {
         let guard = &pin();
-        let mut cursor = self.head(guard);
-        if let Ok(found) = cursor.find(&key, guard) {
-            if found {
-                cursor.prev.finish();
-                return false;
+        let _ = match self.find(&key, guard) {
+            Ok((found, cursor)) => {
+                if found {
+                    cursor.prev.finish();
+                    return false;
+                }
+
+                if let Ok(prev_write_guard) = cursor.prev.upgrade() {
+                    let mut new_node = Node::new(key, cursor.curr);
+                    match prev_write_guard.compare_exchange(
+                        cursor.curr,
+                        new_node,
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
+                        guard,
+                    ) {
+                        Ok(_) => {
+                            return true;
+                        }
+                        Err(_) => {
+                            return false;
+                        }
+                    }
+                } else {
+                    return false;
+                }
             }
-        }
-        let mut new_node = Node::new(key, cursor.curr);
-        match cursor.prev.compare_exchange(
-            cursor.curr,
-            new_node,
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-            guard,
-        ) {
-            Ok(node) => {
-                cursor.prev.finish();
-                true
-            }
-            Err(e) => {
-                cursor.prev.finish();
-                false
-            }
-        }
+            Err(_) => return false,
+        };
     }
 
     fn remove(&self, key: &T) -> bool {
         let guard = &pin();
-        let mut cursor = self.head(guard);
-        if let Ok(found) = cursor.find(key, guard) {
-            if found {
-                let succ = unsafe { cursor.curr.as_ref() };
-                if succ.is_none() {
+        match self.find(key, guard) {
+            Ok((found, mut cursor)) => {
+                if !found {
+                    cursor.prev.finish();
                     return false;
                 }
-                let succ = succ
-                    .unwrap()
-                    .next
-                    .write_lock()
-                    .load(Ordering::SeqCst, guard);
-                let prev = cursor.prev.upgrade();
-                match prev {
-                    Ok(p) => {
-                        if p.compare_exchange(
+
+                if let Ok(prev_write_lock) = cursor.prev.upgrade() {
+                    let current_node = unsafe { cursor.curr.as_ref().unwrap() };
+
+                    let next_read_lock = unsafe { current_node.next.read_lock() };
+                    let succ = next_read_lock.load(Ordering::SeqCst, guard);
+
+                    if let Ok(next_write_lock) = next_read_lock.upgrade() {
+                        match prev_write_lock.compare_exchange(
                             cursor.curr,
                             succ,
                             Ordering::SeqCst,
                             Ordering::SeqCst,
                             guard,
-                        )
-                        .is_ok()
-                        {
-                            unsafe {
-                                guard.defer_destroy(cursor.curr);
+                        ) {
+                            Ok(_) => {
+                                unsafe {
+                                    guard.defer_destroy(cursor.curr);
+                                }
+                                return true;
                             }
-                            return true;
-                        } else {
-                            return false;
+                            Err(_) => {
+                                return false;
+                            }
                         }
-                    }
-                    Err(_) => {
+                    } else {
                         return false;
                     }
+                } else {
+                    return false;
                 }
             }
-        }
-        cursor.prev.finish();
-        false
+            Err(_) => return false,
+        };
     }
 }
 
@@ -201,16 +204,14 @@ impl<T> OptimisticFineGrainedListSet<T> {
     }
 }
 
-impl<'g, T> Iterator for Iter<'g, T>
-where
-    T: Debug,
-{
+impl<'g, T> Iterator for Iter<'g, T> {
     type Item = Result<&'g T, ()>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let curr_node = self.cursor.curr;
         let prev_node = &self.cursor.prev;
 
+        // do it when about to return a value?
         if !prev_node.validate() {
             return Some(Err(()));
         }
@@ -248,7 +249,7 @@ where
 
 impl<T> Drop for OptimisticFineGrainedListSet<T> {
     fn drop(&mut self) {
-        let guard = unsafe { unprotected() };
+        let guard = &pin();
         let mut curr = self.head.write_lock().load(Ordering::SeqCst, guard);
         while !curr.is_null() {
             unsafe {
