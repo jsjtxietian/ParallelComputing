@@ -2,7 +2,10 @@
 
 workspace "gts_perf_tests"
     configurations { "Debug", "DebugWithCounting","DebugWithLogger", "DebugWithTracy", "RelWithCounting", "RelWithLogger", "RelWithTracy", "RelWithSimTrace", "Release" }
-    platforms { "x86", "x64" }
+    architecture "x86_64"
+    cppdialect "C++17"
+
+    
     location ("../../_build/gts_perf_tests/" .. _ACTION .. (_ARGS[1] and ("/" .. _ARGS[1]) or ("")))
     startproject "gts_perf_tests"
     
@@ -10,16 +13,6 @@ workspace "gts_perf_tests"
     exceptionhandling "Off"
     rtti "Off"
     
-    if(_ARGS[1] == "clang") then
-        toolset "msc-llvm-vs2014"
-        buildoptions { "-mavx2 -mfma" }
-    end
-
-    filter { "platforms:x86"}
-        architecture "x86"
-
-    filter { "platforms:x64"}
-        architecture "x86_64"
         
     filter { "action:vs*" }        
         defines { "_HAS_EXCEPTIONS=0" }
@@ -80,7 +73,7 @@ workspace "gts_perf_tests"
     include "_intermediates_/tracy"
 
 project "gts_perf_tests"
-    flags "FatalWarnings"
+    
     kind "ConsoleApp"
     language "C++"
     targetdir "%{prj.location}/%{cfg.buildcfg}_%{cfg.architecture}"

@@ -2,7 +2,10 @@
 
 workspace "gts_malloc"
     configurations { "Debug", "RelWithAssert", "Release" }
-    platforms { "x86", "x64" }
+    architecture "x86_64"
+    cppdialect "C++17"
+
+    
     location ("../../_build/gts_malloc/" .. _ACTION .. (_ARGS[1] and ("/" .. _ARGS[1]) or ("")))
     startproject "gts_malloc"
     
@@ -10,17 +13,6 @@ workspace "gts_malloc"
     exceptionhandling "Off"
     rtti "Off"
     
-    if(_ARGS[1] == "clang") then
-        toolset "msc-llvm-vs2014"
-    else
-        flags "FatalWarnings"
-    end
-    
-    filter { "platforms:x86"}
-        architecture "x86"
-
-    filter { "platforms:x64"}
-        architecture "x86_64"
         
     filter { "action:vs*" }
         defines { "_HAS_EXCEPTIONS=0" }

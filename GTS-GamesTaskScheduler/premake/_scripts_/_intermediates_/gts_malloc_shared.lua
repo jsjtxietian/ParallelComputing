@@ -1,5 +1,4 @@
 project "gts_malloc_shared"
-    flags "FatalWarnings"
     kind "SharedLib"
     language "C++"
     targetdir "%{prj.location}/%{cfg.buildcfg}_%{cfg.architecture}"

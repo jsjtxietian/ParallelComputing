@@ -1,5 +1,4 @@
 project "gts"
-    flags "FatalWarnings"
     kind "StaticLib"
     language "C++"
     targetdir "%{prj.location}/%{cfg.buildcfg}_%{cfg.architecture}"
