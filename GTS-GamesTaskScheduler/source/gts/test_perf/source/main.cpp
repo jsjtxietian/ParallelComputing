@@ -465,18 +465,18 @@ void heteroRandomDagWorkStealing(Output& output, uint32_t iterations = 100)
 }
 
 //------------------------------------------------------------------------------
-void heteroRandomDagCriticallyAware(Output& output, uint32_t iterations = 100)
-{
-    output << "=== Heterogeneous Random DAG Critically Aware (s) ===" << std::endl;
-    output << "threads : " << 16 << std::endl;
-    output << "iterations : " << iterations << std::endl;
+// void heteroRandomDagCriticallyAware(Output& output, uint32_t iterations = 100)
+// {
+//     output << "=== Heterogeneous Random DAG Critically Aware (s) ===" << std::endl;
+//     output << "threads : " << 16 << std::endl;
+//     output << "iterations : " << iterations << std::endl;
 
-    GTS_ASSERT(gts::Thread::getHardwareThreadCount() >= 16 && "Machine must have at least 16 cores.");
+//     GTS_ASSERT(gts::Thread::getHardwareThreadCount() >= 16 && "Machine must have at least 16 cores.");
 
-    Stats stats = heteroRandomDagCriticallyAware(iterations);
-    output << stats.mean() << ", ";
-    output << std::endl;
-}
+//     Stats stats = heteroRandomDagCriticallyAware(iterations);
+//     output << stats.mean() << ", ";
+//     output << std::endl;
+// }
 
 constexpr char* TEST_TYPE_SPAWN_TASK        = "spawn_task";
 constexpr char* TEST_TYPE_OVERHEAD          = "empty_for";

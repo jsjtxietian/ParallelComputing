@@ -6,7 +6,7 @@ workspace "gts_perf_tests"
     cppdialect "C++17"
 
     
-    location ("../../_build/gts_perf_tests/" .. _ACTION .. (_ARGS[1] and ("/" .. _ARGS[1]) or ("")))
+    location ("../../_build/gts_perf_tests_" .. _ACTION .. (_ARGS[1] and ("_" .. _ARGS[1]) or ("")))
     startproject "gts_perf_tests"
     
     warnings "Extra"

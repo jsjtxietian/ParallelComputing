@@ -47,7 +47,7 @@ private:
         inline virtual int overflow(int c)
         {
             std::for_each(m_bufs.begin(), m_bufs.end(),
-                std::bind2nd(std::mem_fun(&std::streambuf::sputc), (char)c));
+                [c](std::streambuf* buf) { buf->sputc(c); });
             return c;
         }
 

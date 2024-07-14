@@ -5,7 +5,7 @@ workspace "gts"
     architecture "x86_64"
     cppdialect "C++17"
     
-    location ("../../_build/gts/" .. _ACTION .. (_ARGS[1] and ("/" .. _ARGS[1]) or ("")))
+    location ("../../_build/gts_" .. _ACTION .. (_ARGS[1] and ("_" .. _ARGS[1]) or ("")))
     startproject "gts"
     
     warnings "Extra"

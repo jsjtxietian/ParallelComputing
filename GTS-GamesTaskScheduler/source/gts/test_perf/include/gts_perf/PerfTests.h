@@ -54,4 +54,4 @@ Stats mpmcQueuePerfParallel(const uint32_t threadCount, const uint32_t itemCount
 
 Stats homoRandomDagWorkStealing(uint32_t iterations);
 Stats heteroRandomDagWorkStealing(uint32_t iterations, bool bidirectionalStealing);
-Stats heteroRandomDagCriticallyAware(uint32_t iterations);
+// Stats heteroRandomDagCriticallyAware(uint32_t iterations);

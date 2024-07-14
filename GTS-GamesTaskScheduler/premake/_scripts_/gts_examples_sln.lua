@@ -5,7 +5,7 @@ workspace "gts_examples"
     architecture "x86_64"
     cppdialect "C++17"
     
-    location ("../../_build/gts_examples/" .. _ACTION .. (_ARGS[1] and ("/" .. _ARGS[1]) or ("")))
+    location ("../../_build/gts_examples_" .. _ACTION .. (_ARGS[1] and ("_" .. _ARGS[1]) or ("")))
     startproject "fib_example"
     
     --warnings "Extra"

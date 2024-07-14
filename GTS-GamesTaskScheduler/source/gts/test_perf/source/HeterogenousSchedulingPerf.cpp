@@ -40,8 +40,8 @@
 #include "gts/macro_scheduler/schedulers/homogeneous/central_queue/CentralQueue_Schedule.h"
 
 // critically_aware_task_scheduling
-#include "gts/macro_scheduler/schedulers/heterogeneous/critically_aware_task_scheduling/CriticallyAware_MacroScheduler.h"
-#include "gts/macro_scheduler/schedulers/heterogeneous/critically_aware_task_scheduling/CriticallyAware_Schedule.h"
+//#include "gts/macro_scheduler/schedulers/heterogeneous/critically_aware_task_scheduling/CriticallyAware_MacroScheduler.h"
+//#include "gts/macro_scheduler/schedulers/heterogeneous/critically_aware_task_scheduling/CriticallyAware_Schedule.h"
 
 #include <Windows.h>
 
@@ -650,20 +650,20 @@ Stats heteroRandomDagWorkStealing(uint32_t iterations, bool bidirectionalStealin
 }
 
 //------------------------------------------------------------------------------
-Stats heteroRandomDagCriticallyAware(uint32_t iterations)
-{
-    constexpr uint32_t numResources    = 2;
-    constexpr uint32_t bigCoreCount    = 8;
-    constexpr uint32_t littleCoreCount = 8;
+// Stats heteroRandomDagCriticallyAware(uint32_t iterations)
+// {
+//     constexpr uint32_t numResources    = 2;
+//     constexpr uint32_t bigCoreCount    = 8;
+//     constexpr uint32_t littleCoreCount = 8;
 
-    ComputeResourceData data(2);
-    createHeterogeneousComputeResources(data);
+//     ComputeResourceData data(2);
+//     createHeterogeneousComputeResources(data);
 
-    Vector<ComputeResource*> computeResources;
-    computeResources.push_back(data.pComputeResource[0]);
-    computeResources.push_back(data.pComputeResource[1]);
+//     Vector<ComputeResource*> computeResources;
+//     computeResources.push_back(data.pComputeResource[0]);
+//     computeResources.push_back(data.pComputeResource[1]);
 
-    Stats stats = heteroRandomDagTest<CriticallyAware_MacroScheduler>(computeResources, iterations);
+//     Stats stats = heteroRandomDagTest<CriticallyAware_MacroScheduler>(computeResources, iterations);
 
-    return stats;
-}
+//     return stats;
+// }
