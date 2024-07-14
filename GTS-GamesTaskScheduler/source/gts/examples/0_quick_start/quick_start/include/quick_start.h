@@ -157,6 +157,8 @@ void basicMacroSchedulerNodeGraph()
         pMacroScheduler->executeSchedule(pSchedule, microSchedulerCompResource.id());
     }
 
+    pMacroScheduler->freeSchedule(pSchedule);
+
     printf("SUCCESS!\n\n");
 }
 
