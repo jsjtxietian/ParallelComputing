@@ -87,13 +87,12 @@ void instrumentationGameLoop()
         std::vector<char> vec(elementCount, 0);
 
         parallelFor(
-            BlockedRange1d<std::vector<char>::iterator>(vec.begin(), vec.end(), 1),
-            [](BlockedRange1d<std::vector<char>::iterator>& range, void*, TaskContext const&)
+            Range1d<size_t>(0, elementCount, 1),
+            [](Range1d<size_t>& range, void*, TaskContext const&)
             {
                 
             },
             AdaptivePartitioner(),
-            nullptr,
             nullptr
         );
 

@@ -56,3 +56,7 @@ group "1_micro_scheduler"
 
 group "3_macro_scheduler"
     include "_intermediates_/gts_ex_macro_scheduler"
+
+group "6_analysis"
+    include "_intermediates_/gts_ex_analysis"
+
